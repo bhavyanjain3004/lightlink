@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { min-height: 100%; }
+body { margin: 0; font-family: "Manrope", sans-serif; -webkit-font-smoothing: antialiased; }
+button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid #2e7d6b; outline-offset: 3px; }
+::selection { background: #ff8a3d; color: #fff6e8; }
