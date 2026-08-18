@@ -207,6 +207,23 @@ function App() {
               )}
               <div className="confidence-badge"><span className="pulse-dot" /> 94.2% <small>high confidence</small></div>
             </div>
+            
+            {/* ON-SCREEN DEBUG CONSOLE */}
+            <div style={{
+              background: '#111', 
+              color: '#0f0', 
+              fontFamily: 'monospace', 
+              fontSize: '10px', 
+              padding: '8px', 
+              margin: '10px', 
+              borderRadius: '8px',
+              height: '120px',
+              overflowY: 'auto',
+              textAlign: 'left'
+            }} id="debug-console">
+              Waiting for logs...
+            </div>
+
             <p className="camera-note"><Camera size={15} /> camera viewfinder {devMode && "· simulated"}</p>
           </div>
           <div className="receive-status">
