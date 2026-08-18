@@ -41,6 +41,48 @@ function App() {
   // Engine Refs and State
   const senderCanvasRef = useRef(null);
   const receiverVideoRef = useRef(null);
+
+  useEffect(() => {
+    // Override console to show on screen
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    
+    const logToScreen = (msg) => {
+      const debugDiv = document.getElementById("debug-console");
+      if (debugDiv) {
+        if (debugDiv.innerText === "Waiting for logs...") debugDiv.innerText = "";
+        debugDiv.innerText += msg + "\n";
+        debugDiv.scrollTop = debugDiv.scrollHeight;
+      }
+    };
+
+    console.log = (...args) => {
+      originalLog(...args);
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('[LightLink]')) {
+         logToScreen(args.join(' '));
+      }
+    };
+    console.warn = (...args) => {
+      originalWarn(...args);
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('[LightLink]')) {
+         logToScreen("⚠️ " + args.join(' '));
+      }
+    };
+    console.error = (...args) => {
+      originalError(...args);
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('[LightLink]')) {
+         logToScreen("❌ " + args.join(' '));
+      }
+    };
+
+    return () => {
+      console.log = originalLog;
+      console.warn = originalWarn;
+      console.error = originalError;
+    };
+  }, []);
+
   const [senderStats, setSenderStats] = useState({ symbolsSent: 0, bytesSent: 0 });
   const [receiverStats, setReceiverStats] = useState({ progress: 0, received: 0, redundant: 0 });
   const [receiveSuccess, setReceiveSuccess] = useState(false);
