@@ -65,8 +65,17 @@ export class VisualReceiver {
         inversionAttempts: "dontInvert",
       });
 
-      if (code && code.binaryData.length > 0) {
-        this.handlePayload(new Uint8Array(code.binaryData));
+      if (code && code.data.length > 0) {
+        try {
+          const binaryStr = atob(code.data);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          this.handlePayload(bytes);
+        } catch (e) {
+          // Not a valid base64 frame, skip it
+        }
       }
     }
     requestAnimationFrame(this.tick.bind(this));

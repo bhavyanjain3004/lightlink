@@ -74,11 +74,13 @@ export class VisualSender {
       buffer.set(value.payload, 5);
     }
 
+    // Encode as Base64 so binary data survives QR → camera → jsQR text decode
+    const base64 = btoa(String.fromCharCode(...buffer));
+
     // Render QR Code
     try {
-      // QRCode natively supports byte segments
       const qrCanvas = document.createElement('canvas');
-      await QRCode.toCanvas(qrCanvas, [{ data: buffer as unknown as Uint8ClampedArray, mode: 'byte' }], {
+      await QRCode.toCanvas(qrCanvas, base64, {
         errorCorrectionLevel: 'L',
         margin: 2,
         width: this.canvas.width
