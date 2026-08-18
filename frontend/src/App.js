@@ -147,7 +147,7 @@ function App() {
           </div>
           <div className="pattern-stage">
             <div className="stage-top"><span>EMITTING CHUNKS</span><strong>{devMode ? progress : Math.floor(senderStats.bytesSent / 1024)} KB</strong></div>
-            {(!devMode && realFile) ? <canvas ref={senderCanvasRef} width={200} height={200} style={{ margin: "14px auto", display: "block", borderRadius: "12px" }} /> : <Pattern />}
+            {(!devMode && realFile) ? <canvas ref={senderCanvasRef} width={400} height={400} style={{ margin: "14px auto", display: "block", borderRadius: "12px", maxWidth: "100%" }} /> : <Pattern />}
             <div className="stage-meta"><span><b>{realFile ? (realFile.size/1024).toFixed(1) : "1.8"} KB</b> file size</span><span><b>~10 fps</b> frame rate</span></div>
           </div>
         </div>}
