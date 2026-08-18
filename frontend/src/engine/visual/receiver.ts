@@ -1,4 +1,4 @@
-import jsQR from 'jsqr';
+import { readBarcodes } from 'zxing-wasm/reader';
 import { LTDecoder } from '../lt-codes/decoder';
 import { FileMeta } from '../lt-codes/encoder';
 
@@ -19,7 +19,7 @@ export class VisualReceiver {
 
   constructor(videoElement?: HTMLVideoElement) {
     this.video = videoElement || document.createElement('video');
-    this.video.setAttribute('playsinline', 'true'); // required to tell iOS safari we don't want fullscreen
+    this.video.setAttribute('playsinline', 'true'); // required for iOS Safari
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
   }
@@ -61,32 +61,39 @@ export class VisualReceiver {
       this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
       
       const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: "dontInvert",
-      });
+      
+      // Use ZXing (much more robust than jsQR) to read the QR code
+      try {
+        const results = await readBarcodes(imageData, {
+          formats: ['QRCode'],
+          tryHarder: true,
+        });
 
-      if (code && code.data.length > 0) {
-        try {
-          const binaryStr = atob(code.data);
-          const bytes = new Uint8Array(binaryStr.length);
-          for (let i = 0; i < binaryStr.length; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
+        if (results.length > 0 && results[0].text) {
+          const text = results[0].text;
+          // Deduplicate
+          if (text !== this.lastPayloadStr) {
+            this.lastPayloadStr = text;
+            try {
+              const binaryStr = atob(text);
+              const bytes = new Uint8Array(binaryStr.length);
+              for (let i = 0; i < binaryStr.length; i++) {
+                bytes[i] = binaryStr.charCodeAt(i);
+              }
+              this.handlePayload(bytes);
+            } catch (e) {
+              // Not a valid base64 LightLink frame, skip
+            }
           }
-          this.handlePayload(bytes);
-        } catch (e) {
-          // Not a valid base64 frame, skip it
         }
+      } catch (e) {
+        // ZXing decode error — skip frame
       }
     }
     requestAnimationFrame(this.tick.bind(this));
   }
 
   private handlePayload(buffer: Uint8Array) {
-    // Basic deduplication to save CPU cycles
-    const payloadStr = buffer.join(',');
-    if (payloadStr === this.lastPayloadStr) return;
-    this.lastPayloadStr = payloadStr;
-
     const type = buffer[0];
     
     if (type === 0) {
@@ -124,7 +131,7 @@ export class VisualReceiver {
   }
 
   private async finish() {
-    this.isScanning = false; // Stop scanning
+    this.isScanning = false;
     try {
       const file = await this.decoder!.getReconstructedFile();
       if (this.onComplete) {
