@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUpRight, Camera, Check, ChevronRight, CircleOff, Github, Menu, Play, ScanLine, Sparkles, Upload, WifiOff, X } from "lucide-react";
 import "./App.css";
-import { VisualSender, VisualReceiver } from "transferengine";
+import { VisualSender } from "./engine/visual/sender";
+import { VisualReceiver } from "./engine/visual/receiver";
 
 const modes = ["send", "receive", "metrics"];
 const steps = [
