@@ -137,7 +137,7 @@ export class VisualReceiver {
         const jsonStr = new TextDecoder().decode(buffer.slice(1));
         const meta = JSON.parse(jsonStr) as FileMeta;
         this.decoder = new LTDecoder(meta);
-        console.log('[LightLink] Meta frame received! File:', meta.name, 'Chunks:', meta.k);
+        console.log('[LightLink] Meta frame received! File:', meta.name, 'Blocks:', meta.blockCount);
       } catch (e) {
         console.warn('[LightLink] Failed to parse Meta frame', e);
       }
