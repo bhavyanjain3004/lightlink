@@ -8,8 +8,8 @@ export class VisualSender {
   private encoder: Generator<EncodedSymbol> | null = null;
   private meta: FileMeta | null = null;
   
-  public fps: number = 10;
-  public chunkSize: number = 150;
+  public fps: number = 3;
+  public chunkSize: number = 80;
   
   private isPlaying: boolean = false;
   private frameCount: number = 0;
