@@ -88,11 +88,7 @@ export class VisualSender {
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       this.ctx.drawImage(qrCanvas, 0, 0, this.canvas.width, this.canvas.height);
 
-      // Draw distinct marker to detect new frame (toggling colored dot in top right)
-      this.ctx.fillStyle = this.frameCount % 2 === 0 ? '#ff5f5f' : '#2e7d6b';
-      this.ctx.beginPath();
-      this.ctx.arc(this.canvas.width - 15, 15, 8, 0, Math.PI * 2);
-      this.ctx.fill();
+      // Removed the toggling colored dot because it overlays the QR quiet zone and breaks jsQR!
 
       // Fire stats
       if (this.onStatsUpdate) {
