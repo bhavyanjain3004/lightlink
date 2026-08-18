@@ -86,6 +86,7 @@ function App() {
   const [senderStats, setSenderStats] = useState({ symbolsSent: 0, bytesSent: 0 });
   const [receiverStats, setReceiverStats] = useState({ progress: 0, received: 0, redundant: 0 });
   const [receiveSuccess, setReceiveSuccess] = useState(false);
+  const [receivedFile, setReceivedFile] = useState(null);
 
   // Simulation timer
   useEffect(() => {
@@ -110,16 +111,12 @@ function App() {
     if (devMode || mode !== "receive" || !receiverVideoRef.current) return;
     
     setReceiveSuccess(false);
+    setReceivedFile(null);
     const receiver = new VisualReceiver(receiverVideoRef.current);
     receiver.onStatsUpdate = setReceiverStats;
     receiver.onComplete = (file) => {
       setReceiveSuccess(true);
-      const url = URL.createObjectURL(file);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = file.name;
-      a.click();
-      URL.revokeObjectURL(url);
+      setReceivedFile(file);
     };
     receiver.start();
     
@@ -135,6 +132,16 @@ function App() {
       setFileName(file.name);
       setRealFile(file);
     }
+  };
+
+  const handleSaveFile = () => {
+    if (!receivedFile) return;
+    const url = URL.createObjectURL(receivedFile);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = receivedFile.name;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return <main className="site-shell" data-testid="lightlink-app">
@@ -232,7 +239,11 @@ function App() {
             <p>ML is weighing each frame and filling in the gaps.</p>
             <div className="progress-label"><span>checksum progress</span><b>{devMode ? "82" : Math.floor(receiverStats.progress * 100)}%</b></div>
             <div className="progress-bar"><span style={{ width: `${devMode ? 82 : receiverStats.progress * 100}%` }} /></div>
-            {(receiveSuccess || devMode) && <div className="success-state"><span><Check size={17} /></span><div><strong>Decoded ✓</strong><small>checksum verified · ready to save</small></div></div>}
+            {(receiveSuccess || devMode) && <div className="success-state">
+              <span><Check size={17} /></span>
+              <div><strong>Decoded ✓</strong><small>checksum verified · ready to save</small></div>
+              {!devMode && receivedFile && <button onClick={handleSaveFile} style={{ marginLeft: "auto", padding: "6px 12px", background: "#fff", color: "#000", border: "none", borderRadius: "16px", fontWeight: "bold", cursor: "pointer", fontSize: "12px" }}>Save File</button>}
+            </div>}
           </div>
         </div>}
         
