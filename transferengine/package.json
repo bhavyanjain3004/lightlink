@@ -10,6 +10,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.3"
   },

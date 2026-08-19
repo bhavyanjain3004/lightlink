@@ -1,5 +1,6 @@
 import { LTDecoder } from '../lt-codes/decoder';
 import { FileMeta } from '../lt-codes/encoder';
+import { MLDecoder } from '../ml/decoder';
 
 // Extend window type for BarcodeDetector (Chrome/Android native API)
 declare const BarcodeDetector: any;
@@ -8,6 +9,8 @@ export class VisualReceiver {
   private video: HTMLVideoElement;
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  private mlCanvas: HTMLCanvasElement;
+  private mlCtx: CanvasRenderingContext2D;
   
   private stream: MediaStream | null = null;
   private isScanning: boolean = false;
@@ -15,6 +18,8 @@ export class VisualReceiver {
   private decoder: LTDecoder | null = null;
   private lastPayloadStr: string = '';
   private detector: any = null;
+  private mlDecoder: MLDecoder;
+  private isMlEnabled: boolean = false;
 
   public onStatsUpdate?: (stats: { progress: number, received: number, redundant: number }) => void;
   public onComplete?: (file: File) => void;
@@ -25,10 +30,25 @@ export class VisualReceiver {
     this.video.setAttribute('playsinline', 'true');
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
+    this.mlCanvas = document.createElement('canvas');
+    this.mlCanvas.width = 256;
+    this.mlCanvas.height = 256;
+    this.mlCtx = this.mlCanvas.getContext('2d', { willReadFrequently: true })!;
+    this.mlDecoder = new MLDecoder();
   }
 
   public async start() {
     if (this.isScanning) return;
+
+    // Asynchronously load the ML restoration model
+    this.mlDecoder.loadModel()
+      .then(() => {
+        this.isMlEnabled = true;
+      })
+      .catch((e) => {
+        console.warn('[LightLink ML] Falling back to baseline: ML failed to load.', e);
+        this.isMlEnabled = false;
+      });
     
     // Initialize detector — prefer native BarcodeDetector (Chrome/Android), fall back to jsQR
     try {
@@ -89,6 +109,7 @@ export class VisualReceiver {
 
       try {
         let text: string | null = null;
+        let confidence = 1.0; // High confidence default (decoded without ML)
 
         if (this.detector && !this.detector._jsqr) {
           // Native BarcodeDetector path
@@ -105,6 +126,38 @@ export class VisualReceiver {
           if (code) text = code.data;
         }
 
+        // ML Fallback Path: if cheap decode fails and ML model is enabled/loaded
+        if (!text && this.isMlEnabled) {
+          try {
+            const cleanedImgData = await this.mlDecoder.processFrame(this.video);
+            if (cleanedImgData) {
+              // Draw cleaned ImageData to helper canvas
+              this.mlCtx.putImageData(cleanedImgData, 0, 0);
+
+              // Try decoding on the restored canvas
+              if (this.detector && !this.detector._jsqr) {
+                const results = await this.detector.detect(this.mlCanvas);
+                if (results.length > 0) {
+                  text = results[0].rawValue;
+                  confidence = 0.5; // Medium confidence for ML-restored frame
+                  console.log('[LightLink ML] Frame decoded successfully after ML restoration! 🎯');
+                }
+              } else if (this.detector && this.detector._jsqr) {
+                const code = this.detector._jsqr(cleanedImgData.data, cleanedImgData.width, cleanedImgData.height, {
+                  inversionAttempts: 'dontInvert'
+                });
+                if (code) {
+                  text = code.data;
+                  confidence = 0.5;
+                  console.log('[LightLink ML] Frame decoded successfully after ML restoration! 🎯');
+                }
+              }
+            }
+          } catch (mlErr) {
+            console.warn('[LightLink ML] Inference failed, falling back to baseline.', mlErr);
+          }
+        }
+
         if (text && text !== this.lastPayloadStr) {
           this.lastPayloadStr = text;
           try {
@@ -113,7 +166,7 @@ export class VisualReceiver {
             for (let i = 0; i < binaryStr.length; i++) {
               bytes[i] = binaryStr.charCodeAt(i);
             }
-            this.handlePayload(bytes);
+            this.handlePayload(bytes, confidence);
           } catch (e) {
             // Not a valid LightLink base64 frame, skip
           }
@@ -127,7 +180,7 @@ export class VisualReceiver {
     setTimeout(() => this.tick(), 150); // ~6.5 fps scan rate
   }
 
-  private handlePayload(buffer: Uint8Array) {
+  private handlePayload(buffer: Uint8Array, confidence: number = 1.0) {
     const type = buffer[0];
     
     if (type === 0) {
@@ -152,7 +205,7 @@ export class VisualReceiver {
       const seed = view.getUint32(1, true);
       const payload = buffer.slice(5);
       
-      this.decoder.addSymbol(seed, payload);
+      this.decoder.addSymbol(seed, payload, confidence);
       
       const stats = {
         progress: this.decoder.getProgress(),

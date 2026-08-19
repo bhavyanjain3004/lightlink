@@ -3,3 +3,15 @@ dist/
 build/
 .env
 .DS_Store
+
+# Python & ML Artifacts
+aiengine/.venv/
+aiengine/dataset/generated/
+aiengine/dataset/processed/
+aiengine/export/output/
+aiengine/model/best_checkpoint.pth
+aiengine/export/samples/
+*.pth
+*.onnx
+__pycache__/
+*.pyc

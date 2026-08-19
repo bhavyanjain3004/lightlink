@@ -1,0 +1,18 @@
+{
+  "Good light": {
+    "before": 96,
+    "after": 94
+  },
+  "Low light": {
+    "before": 96,
+    "after": 2
+  },
+  "Blur": {
+    "before": 34,
+    "after": 26
+  },
+  "Angle": {
+    "before": 97,
+    "after": 95
+  }
+}

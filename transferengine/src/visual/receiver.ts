@@ -1,17 +1,25 @@
-import jsQR from 'jsqr';
 import { LTDecoder } from '../lt-codes/decoder';
 import { FileMeta } from '../lt-codes/encoder';
+import { MLDecoder } from '../ml/decoder';
+
+// Extend window type for BarcodeDetector (Chrome/Android native API)
+declare const BarcodeDetector: any;
 
 export class VisualReceiver {
   private video: HTMLVideoElement;
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  private mlCanvas: HTMLCanvasElement;
+  private mlCtx: CanvasRenderingContext2D;
   
   private stream: MediaStream | null = null;
   private isScanning: boolean = false;
   
   private decoder: LTDecoder | null = null;
   private lastPayloadStr: string = '';
+  private detector: any = null;
+  private mlDecoder: MLDecoder;
+  private isMlEnabled: boolean = false;
 
   public onStatsUpdate?: (stats: { progress: number, received: number, redundant: number }) => void;
   public onComplete?: (file: File) => void;
@@ -19,14 +27,53 @@ export class VisualReceiver {
 
   constructor(videoElement?: HTMLVideoElement) {
     this.video = videoElement || document.createElement('video');
-    this.video.setAttribute('playsinline', 'true'); // required to tell iOS safari we don't want fullscreen
+    this.video.setAttribute('playsinline', 'true');
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
+    this.mlCanvas = document.createElement('canvas');
+    this.mlCanvas.width = 256;
+    this.mlCanvas.height = 256;
+    this.mlCtx = this.mlCanvas.getContext('2d', { willReadFrequently: true })!;
+    this.mlDecoder = new MLDecoder();
   }
 
   public async start() {
     if (this.isScanning) return;
+
+    // Asynchronously load the ML restoration model
+    this.mlDecoder.loadModel()
+      .then(() => {
+        this.isMlEnabled = true;
+      })
+      .catch((e) => {
+        console.warn('[LightLink ML] Falling back to baseline: ML failed to load.', e);
+        this.isMlEnabled = false;
+      });
     
+    // Initialize detector — prefer native BarcodeDetector (Chrome/Android), fall back to jsQR
+    try {
+      if (typeof BarcodeDetector !== 'undefined') {
+        const supported = await BarcodeDetector.getSupportedFormats();
+        if (supported.includes('qr_code')) {
+          this.detector = new BarcodeDetector({ formats: ['qr_code'] });
+          console.log('[LightLink] Using native BarcodeDetector ✅');
+        }
+      }
+    } catch (e) {
+      console.warn('[LightLink] BarcodeDetector not available, falling back to jsQR');
+    }
+
+    // If native not available, dynamically load jsQR
+    if (!this.detector) {
+      try {
+        const jsQR = (await import('jsqr')).default;
+        this.detector = { _jsqr: jsQR };
+        console.log('[LightLink] Using jsQR fallback');
+      } catch (e) {
+        console.error('[LightLink] No QR decoder available!', e);
+      }
+    }
+
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
@@ -36,9 +83,9 @@ export class VisualReceiver {
         } 
       });
       this.video.srcObject = this.stream;
-      this.video.play();
+      await this.video.play();
       this.isScanning = true;
-      requestAnimationFrame(this.tick.bind(this));
+      this.tick();
     } catch (err: any) {
       if (this.onError) this.onError(err);
     }
@@ -59,62 +106,116 @@ export class VisualReceiver {
       this.canvas.height = this.video.videoHeight;
       this.canvas.width = this.video.videoWidth;
       this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
-      
-      const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: "dontInvert",
-      });
 
-      if (code && code.data.length > 0) {
-        try {
-          const binaryStr = atob(code.data);
-          const bytes = new Uint8Array(binaryStr.length);
-          for (let i = 0; i < binaryStr.length; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
+      try {
+        let text: string | null = null;
+        let confidence = 1.0; // High confidence default (decoded without ML)
+
+        if (this.detector && !this.detector._jsqr) {
+          // Native BarcodeDetector path
+          const results = await this.detector.detect(this.video);
+          if (results.length > 0) {
+            text = results[0].rawValue;
           }
-          this.handlePayload(bytes);
-        } catch (e) {
-          // Not a valid base64 frame, skip it
+        } else if (this.detector && this.detector._jsqr) {
+          // jsQR fallback path
+          const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+          const code = this.detector._jsqr(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'dontInvert'
+          });
+          if (code) text = code.data;
         }
+
+        // ML Fallback Path: if cheap decode fails and ML model is enabled/loaded
+        if (!text && this.isMlEnabled) {
+          try {
+            const cleanedImgData = await this.mlDecoder.processFrame(this.video);
+            if (cleanedImgData) {
+              // Draw cleaned ImageData to helper canvas
+              this.mlCtx.putImageData(cleanedImgData, 0, 0);
+
+              // Try decoding on the restored canvas
+              if (this.detector && !this.detector._jsqr) {
+                const results = await this.detector.detect(this.mlCanvas);
+                if (results.length > 0) {
+                  text = results[0].rawValue;
+                  confidence = 0.5; // Medium confidence for ML-restored frame
+                  console.log('[LightLink ML] Frame decoded successfully after ML restoration! 🎯');
+                }
+              } else if (this.detector && this.detector._jsqr) {
+                const code = this.detector._jsqr(cleanedImgData.data, cleanedImgData.width, cleanedImgData.height, {
+                  inversionAttempts: 'dontInvert'
+                });
+                if (code) {
+                  text = code.data;
+                  confidence = 0.5;
+                  console.log('[LightLink ML] Frame decoded successfully after ML restoration! 🎯');
+                }
+              }
+            }
+          } catch (mlErr) {
+            console.warn('[LightLink ML] Inference failed, falling back to baseline.', mlErr);
+          }
+        }
+
+        if (text && text !== this.lastPayloadStr) {
+          this.lastPayloadStr = text;
+          try {
+            const binaryStr = atob(text);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) {
+              bytes[i] = binaryStr.charCodeAt(i);
+            }
+            this.handlePayload(bytes, confidence);
+          } catch (e) {
+            // Not a valid LightLink base64 frame, skip
+          }
+        }
+      } catch (e) {
+        // Decode error on this frame, skip
       }
     }
-    requestAnimationFrame(this.tick.bind(this));
+
+    // Use setTimeout instead of rAF so we don't hammer CPU at 60fps
+    setTimeout(() => this.tick(), 150); // ~6.5 fps scan rate
   }
 
-  private handlePayload(buffer: Uint8Array) {
-    // Basic deduplication to save CPU cycles
-    const payloadStr = buffer.join(',');
-    if (payloadStr === this.lastPayloadStr) return;
-    this.lastPayloadStr = payloadStr;
-
+  private handlePayload(buffer: Uint8Array, confidence: number = 1.0) {
     const type = buffer[0];
     
     if (type === 0) {
       // Meta Frame
-      if (this.decoder) return; // Already initialized
+      if (this.decoder) return;
       try {
         const jsonStr = new TextDecoder().decode(buffer.slice(1));
         const meta = JSON.parse(jsonStr) as FileMeta;
         this.decoder = new LTDecoder(meta);
+        console.log('[LightLink] Meta frame received! File:', meta.name, 'Blocks:', meta.blockCount);
       } catch (e) {
-        console.warn("Failed to parse Meta frame");
+        console.warn('[LightLink] Failed to parse Meta frame', e);
       }
     } else if (type === 1) {
       // Data Frame
-      if (!this.decoder) return; // Need meta first
+      if (!this.decoder) {
+        console.log('[LightLink] Data frame received but no meta yet — waiting for meta frame');
+        return;
+      }
       
       const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
       const seed = view.getUint32(1, true);
       const payload = buffer.slice(5);
       
-      this.decoder.addSymbol(seed, payload);
+      this.decoder.addSymbol(seed, payload, confidence);
       
+      const stats = {
+        progress: this.decoder.getProgress(),
+        received: this.decoder.totalSymbolsReceived,
+        redundant: this.decoder.redundantSymbols
+      };
+      console.log('[LightLink] Data frame! Progress:', (stats.progress * 100).toFixed(1) + '%');
+
       if (this.onStatsUpdate) {
-        this.onStatsUpdate({
-          progress: this.decoder.getProgress(),
-          received: this.decoder.totalSymbolsReceived,
-          redundant: this.decoder.redundantSymbols
-        });
+        this.onStatsUpdate(stats);
       }
 
       if (this.decoder.isComplete()) {
@@ -124,13 +225,15 @@ export class VisualReceiver {
   }
 
   private async finish() {
-    this.isScanning = false; // Stop scanning
+    this.isScanning = false;
     try {
       const file = await this.decoder!.getReconstructedFile();
+      console.log('[LightLink] ✅ File reconstructed:', file.name, file.size, 'bytes');
       if (this.onComplete) {
         this.onComplete(file);
       }
     } catch (e: any) {
+      console.error('[LightLink] Reconstruction failed:', e);
       if (this.onError) this.onError(e);
     }
   }

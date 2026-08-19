@@ -12,16 +12,19 @@ export class LTDecoder {
   public totalSymbolsReceived: number = 0;
   public redundantSymbols: number = 0;
 
+  private blockConfidences: number[];
+
   constructor(meta: FileMeta) {
     this.meta = meta;
     this.blockCount = meta.blockCount;
     this.chunkSize = meta.chunkSize;
     this.blocks = new Array(this.blockCount).fill(null);
+    this.blockConfidences = new Array(this.blockCount).fill(0);
     this.symbols = [];
     this.soliton = new RobustSoliton(this.blockCount);
   }
 
-  public addSymbol(seed: number, payload: Uint8Array): void {
+  public addSymbol(seed: number, payload: Uint8Array, confidence: number = 1.0): void {
     this.totalSymbolsReceived++;
     const prng = mulberry32(seed);
     const d = this.soliton.sampleDegree(prng);
@@ -46,17 +49,20 @@ export class LTDecoder {
 
     if (indices.size === 1) {
       const idx = Array.from(indices)[0];
-      this.resolveBlock(idx, new Uint8Array(payload));
+      this.resolveBlock(idx, new Uint8Array(payload), confidence);
     } else {
       // Need more information, store for peeling
       this.symbols.push({ indices, payload: new Uint8Array(payload) });
     }
   }
 
-  private resolveBlock(idx: number, data: Uint8Array) {
-    if (this.blocks[idx]) return;
+  private resolveBlock(idx: number, data: Uint8Array, confidence: number) {
+    if (this.blocks[idx] !== null && confidence <= this.blockConfidences[idx]) {
+      return;
+    }
 
     this.blocks[idx] = data;
+    this.blockConfidences[idx] = confidence;
 
     // Propagate to unresolved symbols (Peeling)
     let i = 0;
@@ -72,7 +78,7 @@ export class LTDecoder {
           this.symbols[i] = this.symbols[this.symbols.length - 1];
           this.symbols.pop();
           // Recursively resolve
-          this.resolveBlock(newIdx, new Uint8Array(sym.payload));
+          this.resolveBlock(newIdx, new Uint8Array(sym.payload), confidence);
           continue; // Don't increment i because we swapped
         } else if (sym.indices.size === 0) {
           // Completely resolved and redundant
