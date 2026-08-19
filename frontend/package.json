@@ -63,6 +63,7 @@
     "tailwind-merge": "3.2.0",
     "tailwindcss-animate": "1.0.7",
     "transferengine": "file:../transferengine",
+    "@tensorflow/tfjs": "^4.22.0",
     "vaul": "1.1.2",
     "zod": "3.24.4",
     "zxing-wasm": "^3.1.3"
