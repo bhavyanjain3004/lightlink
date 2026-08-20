@@ -1,0 +1,112 @@
+{
+  "80B": {
+    "Good light": {
+      "raw": 94,
+      "ml_restored": 96,
+      "combined": 96
+    },
+    "Low light": {
+      "raw": 94,
+      "ml_restored": 4,
+      "combined": 94
+    },
+    "Blur": {
+      "raw": 34,
+      "ml_restored": 30,
+      "combined": 34
+    },
+    "Angle": {
+      "raw": 96,
+      "ml_restored": 94,
+      "combined": 96
+    }
+  },
+  "100B": {
+    "Good light": {
+      "raw": 94,
+      "ml_restored": 100,
+      "combined": 100
+    },
+    "Low light": {
+      "raw": 94,
+      "ml_restored": 0,
+      "combined": 94
+    },
+    "Blur": {
+      "raw": 40,
+      "ml_restored": 32,
+      "combined": 40
+    },
+    "Angle": {
+      "raw": 100,
+      "ml_restored": 98,
+      "combined": 100
+    }
+  },
+  "120B": {
+    "Good light": {
+      "raw": 88,
+      "ml_restored": 38,
+      "combined": 88
+    },
+    "Low light": {
+      "raw": 88,
+      "ml_restored": 0,
+      "combined": 88
+    },
+    "Blur": {
+      "raw": 4,
+      "ml_restored": 0,
+      "combined": 4
+    },
+    "Angle": {
+      "raw": 88,
+      "ml_restored": 86,
+      "combined": 88
+    }
+  },
+  "140B": {
+    "Good light": {
+      "raw": 94,
+      "ml_restored": 12,
+      "combined": 94
+    },
+    "Low light": {
+      "raw": 94,
+      "ml_restored": 0,
+      "combined": 94
+    },
+    "Blur": {
+      "raw": 0,
+      "ml_restored": 0,
+      "combined": 0
+    },
+    "Angle": {
+      "raw": 94,
+      "ml_restored": 42,
+      "combined": 94
+    }
+  },
+  "160B": {
+    "Good light": {
+      "raw": 90,
+      "ml_restored": 12,
+      "combined": 90
+    },
+    "Low light": {
+      "raw": 90,
+      "ml_restored": 0,
+      "combined": 90
+    },
+    "Blur": {
+      "raw": 0,
+      "ml_restored": 0,
+      "combined": 0
+    },
+    "Angle": {
+      "raw": 96,
+      "ml_restored": 56,
+      "combined": 96
+    }
+  }
+}

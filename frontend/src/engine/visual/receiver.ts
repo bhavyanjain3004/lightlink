@@ -16,7 +16,7 @@ export class VisualReceiver {
   private isScanning: boolean = false;
   
   private decoder: LTDecoder | null = null;
-  private lastPayloadStr: string = '';
+  private lastFramePayloads: Set<string> = new Set();
   private detector: any = null;
   private mlDecoder: MLDecoder;
   private isMlEnabled: boolean = false;
@@ -108,48 +108,75 @@ export class VisualReceiver {
       this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
 
       try {
-        let text: string | null = null;
-        let confidence = 1.0; // High confidence default (decoded without ML)
+        const detectedCodes: { text: string; confidence: number }[] = [];
+        const seenInTick = new Set<string>();
 
+        // 1. Primary Cheap Scan Path
         if (this.detector && !this.detector._jsqr) {
-          // Native BarcodeDetector path
+          // Native BarcodeDetector path — multi-code detection
           const results = await this.detector.detect(this.video);
-          if (results.length > 0) {
-            text = results[0].rawValue;
+          for (const item of results) {
+            if (item.rawValue && !seenInTick.has(item.rawValue)) {
+              seenInTick.add(item.rawValue);
+              detectedCodes.push({ text: item.rawValue, confidence: 1.0 });
+            }
           }
         } else if (this.detector && this.detector._jsqr) {
-          // jsQR fallback path
-          const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-          const code = this.detector._jsqr(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: 'dontInvert'
-          });
-          if (code) text = code.data;
+          // jsQR fallback path: full frame + 4 overlapping quadrant slices
+          const W = this.canvas.width;
+          const H = this.canvas.height;
+          const cx = Math.floor(W / 2);
+          const cy = Math.floor(H / 2);
+          const delta = Math.floor(Math.min(W, H) * 0.08); // 8% overlap margin
+
+          const slices = [
+            { x: 0, y: 0, w: W, h: H }, // Full frame
+            { x: 0, y: 0, w: Math.min(W, cx + delta), h: Math.min(H, cy + delta) }, // Top-Left
+            { x: Math.max(0, cx - delta), y: 0, w: W - Math.max(0, cx - delta), h: Math.min(H, cy + delta) }, // Top-Right
+            { x: 0, y: Math.max(0, cy - delta), w: Math.min(W, cx + delta), h: H - Math.max(0, cy - delta) }, // Bottom-Left
+            { x: Math.max(0, cx - delta), y: Math.max(0, cy - delta), w: W - Math.max(0, cx - delta), h: H - Math.max(0, cy - delta) } // Bottom-Right
+          ];
+
+          for (const slice of slices) {
+            try {
+              const imgData = this.ctx.getImageData(slice.x, slice.y, slice.w, slice.h);
+              const code = this.detector._jsqr(imgData.data, imgData.width, imgData.height, {
+                inversionAttempts: 'dontInvert'
+              });
+              if (code && code.data && !seenInTick.has(code.data)) {
+                seenInTick.add(code.data);
+                detectedCodes.push({ text: code.data, confidence: 1.0 });
+              }
+            } catch (sliceErr) {
+              // Ignore individual slice errors
+            }
+          }
         }
 
-        // ML Fallback Path: if cheap decode fails and ML model is enabled/loaded
-        if (!text && this.isMlEnabled) {
+        // 2. ML Fallback Path: if 0 codes were detected on raw frame and ML is available
+        if (detectedCodes.length === 0 && this.isMlEnabled) {
           try {
             const cleanedImgData = await this.mlDecoder.processFrame(this.video);
             if (cleanedImgData) {
-              // Draw cleaned ImageData to helper canvas
               this.mlCtx.putImageData(cleanedImgData, 0, 0);
 
-              // Try decoding on the restored canvas
               if (this.detector && !this.detector._jsqr) {
                 const results = await this.detector.detect(this.mlCanvas);
-                if (results.length > 0) {
-                  text = results[0].rawValue;
-                  confidence = 0.5; // Medium confidence for ML-restored frame
-                  console.log('[LightLink ML] Frame decoded successfully after ML restoration! 🎯');
+                for (const item of results) {
+                  if (item.rawValue && !seenInTick.has(item.rawValue)) {
+                    seenInTick.add(item.rawValue);
+                    detectedCodes.push({ text: item.rawValue, confidence: 0.5 });
+                    console.log('[LightLink ML] Code decoded after ML restoration! 🎯');
+                  }
                 }
               } else if (this.detector && this.detector._jsqr) {
                 const code = this.detector._jsqr(cleanedImgData.data, cleanedImgData.width, cleanedImgData.height, {
                   inversionAttempts: 'dontInvert'
                 });
-                if (code) {
-                  text = code.data;
-                  confidence = 0.5;
-                  console.log('[LightLink ML] Frame decoded successfully after ML restoration! 🎯');
+                if (code && code.data && !seenInTick.has(code.data)) {
+                  seenInTick.add(code.data);
+                  detectedCodes.push({ text: code.data, confidence: 0.5 });
+                  console.log('[LightLink ML] Code decoded after ML restoration! 🎯');
                 }
               }
             }
@@ -158,17 +185,24 @@ export class VisualReceiver {
           }
         }
 
-        if (text && text !== this.lastPayloadStr) {
-          this.lastPayloadStr = text;
-          try {
-            const binaryStr = atob(text);
-            const bytes = new Uint8Array(binaryStr.length);
-            for (let i = 0; i < binaryStr.length; i++) {
-              bytes[i] = binaryStr.charCodeAt(i);
+        // 3. Frame-level Dedup check: check if the exact same set of codes was already handled in the previous tick
+        const isIdenticalFrame = seenInTick.size > 0 &&
+          seenInTick.size === this.lastFramePayloads.size &&
+          Array.from(seenInTick).every(s => this.lastFramePayloads.has(s));
+
+        if (!isIdenticalFrame && detectedCodes.length > 0) {
+          this.lastFramePayloads = seenInTick;
+          for (const item of detectedCodes) {
+            try {
+              const binaryStr = atob(item.text);
+              const bytes = new Uint8Array(binaryStr.length);
+              for (let i = 0; i < binaryStr.length; i++) {
+                bytes[i] = binaryStr.charCodeAt(i);
+              }
+              this.handlePayload(bytes, item.confidence);
+            } catch (e) {
+              // Not a valid base64 payload, skip
             }
-            this.handlePayload(bytes, confidence);
-          } catch (e) {
-            // Not a valid LightLink base64 frame, skip
           }
         }
       } catch (e) {
@@ -176,8 +210,8 @@ export class VisualReceiver {
       }
     }
 
-    // Use setTimeout instead of rAF so we don't hammer CPU at 60fps
-    setTimeout(() => this.tick(), 150); // ~6.5 fps scan rate
+    // Retuned scan interval: 100ms (~10 fps scan rate)
+    setTimeout(() => this.tick(), 100);
   }
 
   private handlePayload(buffer: Uint8Array, confidence: number = 1.0) {

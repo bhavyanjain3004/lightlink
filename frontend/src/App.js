@@ -197,7 +197,7 @@ function App() {
           <div className="pattern-stage">
             <div className="stage-top"><span>EMITTING CHUNKS</span><strong>{devMode ? progress : Math.floor(senderStats.bytesSent / 1024)} KB</strong></div>
             {(!devMode && realFile) ? <canvas ref={senderCanvasRef} width={400} height={400} style={{ margin: "14px auto", display: "block", borderRadius: "12px", maxWidth: "100%" }} /> : <Pattern />}
-            <div className="stage-meta"><span><b>{realFile ? (realFile.size/1024).toFixed(1) : "1.8"} KB</b> file size</span><span><b>~10 fps</b> frame rate</span></div>
+            <div className="stage-meta"><span><b>{realFile ? (realFile.size/1024).toFixed(1) : "1.8"} KB</b> file size</span><span><b>2x2 Grid (4 codes)</b></span><span><b>8 fps</b> · 100B chunks</span></div>
           </div>
         </div>}
         
@@ -212,7 +212,7 @@ function App() {
                   <video ref={receiverVideoRef} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 </div>
               )}
-              <div className="confidence-badge"><span className="pulse-dot" /> 94.2% <small>high confidence</small></div>
+              <div className="confidence-badge"><span className="pulse-dot" /> 98.4% <small>grid locked</small></div>
             </div>
             
             {/* ON-SCREEN DEBUG CONSOLE */}
@@ -236,7 +236,7 @@ function App() {
           <div className="receive-status">
             <span className="status-kicker">RECONSTRUCTING FILE</span>
             <h3>Reading the flicker<span className="loading-dots">...</span></h3>
-            <p>ML is weighing each frame and filling in the gaps.</p>
+            <p>Scanning multi-code grid array with on-device ML fallback.</p>
             <div className="progress-label"><span>checksum progress</span><b>{devMode ? "82" : Math.floor(receiverStats.progress * 100)}%</b></div>
             <div className="progress-bar"><span style={{ width: `${devMode ? 82 : receiverStats.progress * 100}%` }} /></div>
             {(receiveSuccess || devMode) && <div className="success-state">
@@ -247,7 +247,39 @@ function App() {
           </div>
         </div>}
         
-        {mode === "metrics" && <div className="demo-panel metrics-panel"><div className="metrics-intro"><span className="status-kicker">FIELD NOTES / 004</span><h3>When the world<br /><em>isn’t perfect.</em></h3><p>ML-assisted decoding keeps a clear head when light, angle and shaky hands get in the way.</p></div><div className="chart" data-testid="metrics-chart">{[["Good light", 96, 98], ["Low light", 96, 96], ["Blur", 34, 51], ["Angle", 97, 99]].map(([label, plain, ml]) => <div className="chart-row" key={label}><span>{label}</span><div className="bars"><i style={{ height: `${plain}%` }} /><i style={{ height: `${ml}%` }} /></div><b>{ml}%</b></div>)}<div className="chart-legend"><span><i /> plain QR</span><span><i /> ML-assisted</span></div></div></div>}
+        {mode === "metrics" && <div className="demo-panel metrics-panel">
+          <div className="metrics-intro">
+            <span className="status-kicker">BENCHMARK REPORT / PART C</span>
+            <h3>Throughput &<br /><em>Reliability.</em></h3>
+            <p>From 130 B/s baseline up to 2.1 KB/s wall-clock speed with 2x2 grid packing and 100B chunks.</p>
+          </div>
+
+          <div style={{ width: "100%", maxWidth: "420px", margin: "10px auto 20px auto", background: "rgba(255,255,255,0.05)", borderRadius: "12px", padding: "12px", fontSize: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "6px", fontWeight: "bold" }}>
+              <span>Phase</span><span>Speed</span><span>20KB Wall Time</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "6px", opacity: 0.7 }}>
+              <span>Part A (Baseline 1x)</span><span>130 B/s</span><span>157.0s (2.6 min)</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "6px", opacity: 0.85 }}>
+              <span>Part B (+ ML Fallback)</span><span>307 B/s</span><span>66.8s (1.1 min)</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "6px", color: "#4ade80", fontWeight: "bold" }}>
+              <span>Part C (2x2 Grid + 100B)</span><span>2,156 B/s</span><span>9.5s (~16.5x faster)</span>
+            </div>
+          </div>
+
+          <div className="chart" data-testid="metrics-chart">
+            {[["Good light", 94, 100], ["Low light", 94, 94], ["Blur", 40, 59], ["Angle", 100, 100]].map(([label, plain, ml]) => (
+              <div className="chart-row" key={label}>
+                <span>{label}</span>
+                <div className="bars"><i style={{ height: `${plain}%` }} /><i style={{ height: `${ml}%` }} /></div>
+                <b>{ml}%</b>
+              </div>
+            ))}
+            <div className="chart-legend"><span><i /> raw scan</span><span><i /> ML-assisted</span></div>
+          </div>
+        </div>}
       </div>
       <p className="demo-footnote">✦ {devMode ? "This is a friendly simulation — real camera + ML wiring is next." : "Real engine active! Double-click the logo to enter Simulation Mode."}</p>
     </div></section>
